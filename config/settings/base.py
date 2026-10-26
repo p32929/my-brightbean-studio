@@ -17,6 +17,13 @@ env = environ.Env(
 
 environ.Env.read_env(BASE_DIR / ".env", overwrite=False)
 
+# Self-hosted: the env file that Settings → Platform keys edits. Its values win
+# over the process environment, so reloaded workers pick up saved keys without
+# recreating the container. Unset = feature off, upstream behaviour unchanged.
+PLATFORM_ENV_FILE = env("PLATFORM_ENV_FILE", default="")
+if PLATFORM_ENV_FILE:
+    environ.Env.read_env(PLATFORM_ENV_FILE, overwrite=True)
+
 SECRET_KEY = env("SECRET_KEY")
 DEBUG = env("DEBUG")
 ALLOWED_HOSTS = env("ALLOWED_HOSTS")

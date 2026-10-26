@@ -443,3 +443,54 @@ def test_env_dominates_db_for_every_platform(platform, organization):
     if platform == "instagram":
         expected["dm_oauth_scopes_enabled"] = False
     assert resolve_platform_credentials(platform, organization.id) == expected
+
+
+# ---------------------------------------------------------------------------
+# Settings → Platform keys (edits PLATFORM_ENV_FILE)
+# ---------------------------------------------------------------------------
+
+
+def test_update_env_file_rewrites_in_place_and_appends(tmp_path):
+    from apps.credentials.envfile import read_env_file, update_env_file
+
+    path = tmp_path / ".env"
+    path.write_text("# keep me\nSECRET_KEY=abc\nPLATFORM_FACEBOOK_APP_ID=old\n")
+    update_env_file(path, {"PLATFORM_FACEBOOK_APP_ID": "123", "PLATFORM_FACEBOOK_APP_SECRET": "with space"})
+    assert path.read_text() == (
+        "# keep me\nSECRET_KEY=abc\nPLATFORM_FACEBOOK_APP_ID=123\nPLATFORM_FACEBOOK_APP_SECRET='with space'\n"
+    )
+    assert read_env_file(path)["PLATFORM_FACEBOOK_APP_SECRET"] == "with space"
+    with pytest.raises(ValueError):
+        update_env_file(path, {"PLATFORM_FACEBOOK_APP_ID": "a\nb"})
+    assert read_env_file(path)["PLATFORM_FACEBOOK_APP_ID"] == "123"  # rejected write left the file alone
+
+
+@pytest.mark.django_db
+def test_platform_keys_page_saves_and_keeps_blank_secrets(client, tmp_path, settings):
+    from django.utils import timezone
+
+    from apps.accounts.models import User
+    from apps.credentials.envfile import read_env_file
+
+    path = tmp_path / ".env"
+    path.write_text("PLATFORM_FACEBOOK_APP_SECRET=kept\n")
+    settings.PLATFORM_ENV_FILE = str(path)
+    url = reverse("platform_keys:index")
+
+    staff = User.objects.create_user(email="s@example.com", password="x", name="S", tos_accepted_at=timezone.now())
+    client.force_login(staff)
+    assert client.get(url).status_code == 302  # superuser only
+
+    admin_user = User.objects.create_superuser(
+        email="su2@example.com", password="x", name="Super", tos_accepted_at=timezone.now()
+    )
+    client.force_login(admin_user)
+    assert client.get(url).status_code == 200
+    resp = client.post(url, {"PLATFORM_FACEBOOK_APP_ID": "123", "PLATFORM_FACEBOOK_APP_SECRET": ""})
+    assert resp.status_code == 302
+    values = read_env_file(path)
+    assert values["PLATFORM_FACEBOOK_APP_ID"] == "123"
+    assert values["PLATFORM_FACEBOOK_APP_SECRET"] == "kept"
+
+    client.post(url, {"clear_PLATFORM_FACEBOOK_APP_SECRET": "1"})
+    assert read_env_file(path)["PLATFORM_FACEBOOK_APP_SECRET"] == ""
