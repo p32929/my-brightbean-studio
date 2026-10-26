@@ -479,7 +479,7 @@ def test_platform_keys_page_saves_and_keeps_blank_secrets(client, tmp_path, sett
 
     staff = User.objects.create_user(email="s@example.com", password="x", name="S", tos_accepted_at=timezone.now())
     client.force_login(staff)
-    assert client.get(url).status_code == 302  # superuser only
+    assert client.get(url).status_code == 403  # superuser only, and no login-redirect loop
 
     admin_user = User.objects.create_superuser(
         email="su2@example.com", password="x", name="Super", tos_accepted_at=timezone.now()

@@ -15,7 +15,8 @@ from pathlib import Path
 
 from django.conf import settings
 from django.contrib import messages
-from django.contrib.auth.decorators import login_required, user_passes_test
+from django.contrib.auth.decorators import login_required
+from django.core.exceptions import PermissionDenied
 from django.shortcuts import redirect, render
 from django.views.decorators.http import require_http_methods
 
@@ -160,9 +161,12 @@ def _build_groups(values: dict[str, str]) -> list[dict]:
 
 
 @login_required
-@user_passes_test(lambda user: user.is_superuser)
 @require_http_methods(["GET", "POST"])
 def platform_keys(request):
+    # 403, not a login redirect: a signed-in non-superuser bounced to the login
+    # page is sent straight back here by allauth, looping forever.
+    if not request.user.is_superuser:
+        raise PermissionDenied("Only instance administrators can edit platform keys.")
     env_path = settings.PLATFORM_ENV_FILE
     writable = bool(env_path) and os.access(env_path, os.W_OK)
 
